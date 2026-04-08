@@ -13,7 +13,7 @@ A browser extension for Chrome, Edge, and Firefox that adds a **Wrap** button to
 
 - **Chrome**: [Chrome Web Store](https://chrome.google.com/webstore) *(coming soon)*
 - **Edge**: [Edge Add-ons](https://microsoftedge.microsoft.com/addons) *(coming soon)*
-- **Firefox**: [Firefox Add-ons](https://addons.mozilla.org) *(coming soon)*
+- **Firefox**: [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/chatgpt-code-wrap/)
 
 ### Manual Install (Chrome / Edge / Firefox)
 
