@@ -132,7 +132,7 @@
         opacity: 1;
         pointer-events: auto !important;
         position: relative;
-        top: -4px;
+        top: -2px;
       }
 
       .ai-wrap-toggle.ai-wrap-gemini-floating {
@@ -182,6 +182,9 @@
     document.querySelectorAll('.ai-wrap-fallback-root').forEach((element) => {
       element.classList.remove('ai-wrap-fallback-root');
     });
+
+    // Intentionally keep data-ai-wrap="on/off" so the current wrap state
+    // survives script reloads while testing or hot-reloading the extension.
   }
 
   function updateButtonState(button, root) {
@@ -240,25 +243,38 @@
     return button;
   }
 
-  function shouldSkipPre(pre) {
+  function shouldSkipEverywhere(pre) {
     if (!pre || !(pre instanceof Element)) return true;
 
-    // Skip ChatGPT user messages.
-    if (pre.closest('[data-message-author-role="user"]')) return true;
-
-    // Skip editor / input areas.
+    // Skip editor / input areas on all supported sites.
     if (pre.closest('[contenteditable], textarea, [role="textbox"]')) return true;
-
-    // New ChatGPT structure:
-    // outer <pre> contains inner <pre class="cm-content">.
-    // The inner one is CodeMirror content, not a code-block container.
-    if (pre.classList.contains('cm-content')) return true;
 
     // General nested-pre guard.
     // If this <pre> is inside another <pre>, process only the outer block.
     if (pre.parentElement && pre.parentElement.closest('pre')) return true;
 
     return false;
+  }
+
+  function shouldSkipChatGPTPre(pre) {
+    // Skip ChatGPT user messages.
+    if (pre.closest('[data-message-author-role="user"]')) return true;
+
+    // New ChatGPT structure:
+    // outer <pre> contains inner <pre class="cm-content">.
+    // The inner one is CodeMirror content, not a code-block container.
+    if (pre.classList.contains('cm-content')) return true;
+
+    return false;
+  }
+
+  function shouldSkipClaudePre(pre) {
+    // Skip Claude user message code blocks.
+    return Boolean(
+      pre.closest('[data-testid="user-message"]') ||
+      pre.closest('[data-user-message-bubble="true"]') ||
+      pre.closest('[class*="font-user-message"]')
+    );
   }
 
   function isCopyButton(button) {
@@ -419,7 +435,11 @@
   }
 
   function processBlock(pre) {
+    // Universal guard for all supported sites.
+    if (shouldSkipEverywhere(pre)) return;
+
     if (isClaudeCodePre(pre)) {
+      if (shouldSkipClaudePre(pre)) return;
       processClaudeBlock(pre);
       return;
     }
@@ -429,8 +449,10 @@
       return;
     }
 
+    // ChatGPT-specific guard.
+    if (shouldSkipChatGPTPre(pre)) return;
+
     if (pre.hasAttribute(PROCESSED)) return;
-    if (shouldSkipPre(pre)) return;
 
     pre.setAttribute(PROCESSED, '1');
 

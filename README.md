@@ -63,6 +63,11 @@ It also includes a lightweight repair mechanism for streamed React / Angular upd
 
 ## Recent Updates
 
+### v1.1.1
+
+- Updated popup text and automatic version display for ChatGPT, Claude, and Gemini
+- Improved guards to avoid injecting Wrap in user/input areas
+
 ### v1.1.0
 
 - Added support for Claude code blocks on `claude.ai`
