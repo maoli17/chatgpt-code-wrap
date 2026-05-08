@@ -39,7 +39,7 @@ ChatGPT uses [CodeMirror 6](https://codemirror.net/) to render code blocks. The 
 
 - [ ] Claude.ai support
 - [ ] Gemini support
-- [ ] Improve header bar detection for edge cases
+- [x] Improve header bar detection for edge cases
 - [ ] Dark mode fallback colors
 
 ## License
