@@ -3,44 +3,100 @@
 ![Version](https://img.shields.io/github/v/release/maoli17/chatgpt-code-wrap)
 ![License](https://img.shields.io/github/license/maoli17/chatgpt-code-wrap)
 
-A browser extension for Chrome, Edge, and Firefox that adds a **Wrap** button to every code block in ChatGPT. No more horizontal scrolling to read long lines!
+A lightweight browser extension for Chrome, Edge, and Firefox that adds a **Wrap** button to code blocks.
+
+**Now supports ChatGPT, Claude, and Gemini.**
+
+No more horizontal scrolling when reading long code lines.
 
 ![Demo](assets/demo.png)
 
+## Supported Sites
+
+- ChatGPT: `chatgpt.com`, `chat.openai.com`
+- Claude: `claude.ai`
+- Gemini: `gemini.google.com`
+
 ## Install
 
-### Browser Extension
+Install from your browser's extension store:
 
-- **Chrome**: [Chrome Web Store](https://chromewebstore.google.com/detail/chatgpt-code-wrap/plhjikjpniajpkfigoidcoghndkfmnkf)
-- **Edge**: [Chrome Web Store](https://chromewebstore.google.com/detail/chatgpt-code-wrap/plhjikjpniajpkfigoidcoghndkfmnkf) (Edge supports Chrome extensions)
-- **Firefox**: [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/chatgpt-code-wrap/)
+- [Chrome Web Store](https://chromewebstore.google.com/detail/chatgpt-code-wrap/plhjikjpniajpkfigoidcoghndkfmnkf)
+- [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/chatgpt-code-wrap/)
+- Edge users can install from the Chrome Web Store.
 
-### Manual Install (Chrome / Edge / Firefox)
+Manual install:
 
-1. Download and unzip the [latest release](https://github.com/maoli17/chatgpt-code-wrap/releases/latest)
-2. **Chrome / Edge**: Go to `chrome://extensions` (or `edge://extensions`) → enable "Developer mode" → "Load unpacked" → select the unzipped folder
-3. **Firefox**: Go to `about:debugging#/runtime/this-firefox` → "Load Temporary Add-on" → select `manifest.json` from the unzipped folder
+1. Download and unzip the [latest release](https://github.com/maoli17/chatgpt-code-wrap/releases/latest).
+2. Chrome / Edge: open `chrome://extensions` or `edge://extensions`, enable **Developer mode**, click **Load unpacked**, and select the unzipped folder that contains `manifest.json`.
+3. Firefox: open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on**, and select `manifest.json` from the unzipped folder.
 
 ## Usage
 
-After installing, open ChatGPT and look for the **Wrap** button in the top-right corner of any code block. Click it to toggle word wrap on/off.
+Open ChatGPT, Claude, or Gemini.
+
+Each supported code block will show a **Wrap** button in the code block header or near the top-right area of the block.
+
+Click **Wrap** to toggle word wrap for that code block.
+
+- Gray button: wrap is off
+- Green button: wrap is on
+
+The setting is applied per code block.
 
 ## How It Works
 
-ChatGPT uses [CodeMirror 6](https://codemirror.net/) to render code blocks. The extension overrides `white-space`, `overflow-wrap`, and `min-width` on CodeMirror's internal elements (`.cm-content`, `.cm-line`) to enable wrapping. It also handles simple code blocks (`<pre>` with `<code>` or `<span>`) that don't use CodeMirror.
+Different AI chat platforms render code blocks with different DOM structures.
 
+This extension detects the code block structure for each supported site and inserts a small **Wrap** toggle button.
+
+When wrap is enabled, the extension applies CSS rules such as:
+
+- `white-space: pre-wrap`
+- `overflow-wrap: anywhere`
+- `word-break: break-word`
+- `overflow-x: visible`
+
+The extension avoids inserting the button directly into the actual `<pre>` content for Claude and Gemini, so copied code is not polluted by the `Wrap` label.
+
+It also includes a lightweight repair mechanism for streamed React / Angular updates. If the page re-renders a code block and removes the injected button, the extension can detect the missing button and add it back.
+
+## Recent Updates
+
+### v1.1.0
+
+- Added support for Claude code blocks on `claude.ai`
+- Added support for Gemini code blocks on `gemini.google.com`
+- Added safer code block detection across ChatGPT, Claude, and Gemini
+- Added repair logic for streamed React / Angular updates
+- Preserved the ChatGPT fixes for the updated code block DOM
+
+### v1.0.1
+
+- Fixed compatibility with the updated ChatGPT code block DOM
+- Skipped nested CodeMirror `<pre class="cm-content">` elements
+- Fixed duplicate Wrap buttons on some ChatGPT code blocks
+- Improved fallback button placement for plain-text code blocks
 
 ## Known Limitations
 
-- ChatGPT may update its page structure at any time, which could cause the Wrap button to stop appearing. If this happens, please [open an issue](https://github.com/maoli17/chatgpt-code-wrap/issues).
-- Long tokens (URLs, variable names) may break at arbitrary points when wrap is on. This is intentional.
+- ChatGPT, Claude, and Gemini may update their page structure at any time. If the **Wrap** button stops appearing, please [open an issue](https://github.com/maoli17/chatgpt-code-wrap/issues).
+
+- Long tokens such as URLs, hashes, base64 strings, or very long variable names may break at arbitrary points when wrap is enabled. This is intentional.
+
+- For plain-text code blocks without a native header, the extension may reserve a small amount of space near the top of the code block to avoid covering the text.
 
 ## Roadmap
 
-- [ ] Claude.ai support
-- [ ] Gemini support
+- [x] ChatGPT support
+- [x] Claude support
+- [x] Gemini support
 - [x] Improve header bar detection for edge cases
-- [ ] Dark mode fallback colors
+- [x] Improve fallback placement for plain-text code blocks
+- [x] Add repair logic for streamed updates
+- [ ] Optional global default wrap setting
+- [ ] Optional button position setting
+- [ ] Additional AI chat platforms
 
 ## License
 

@@ -118,22 +118,28 @@
         pointer-events: auto !important;
       }
 
-      .ai-wrap-toggle.ai-wrap-floating.ai-pill-on {
-        background: rgba(16, 163, 127, 0.15);
-        color: #10a37f;
+      .ai-wrap-toggle.ai-wrap-claude {
+        position: absolute;
+        top: 12px;
+        right: 44px;
+        z-index: 9999;
+        opacity: 1;
+        pointer-events: auto !important;
       }
 
-      .ai-wrap-toggle.ai-wrap-floating.ai-pill-on .ai-pill-dot {
-        background: #10a37f;
+      .ai-wrap-toggle.ai-wrap-gemini {
+        margin-right: 8px;
+        opacity: 1;
+        pointer-events: auto !important;
+        position: relative;
+        top: -4px;
       }
 
-      .ai-wrap-toggle.ai-wrap-floating.ai-pill-off {
-        background: rgba(150, 150, 150, 0.15);
-        color: #888;
-      }
-
-      .ai-wrap-toggle.ai-wrap-floating.ai-pill-off .ai-pill-dot {
-        background: #888;
+      .ai-wrap-toggle.ai-wrap-gemini-floating {
+        position: absolute;
+        top: 8px;
+        right: 44px;
+        z-index: 9999;
       }
 
       .ai-pill-dot {
@@ -237,7 +243,7 @@
   function shouldSkipPre(pre) {
     if (!pre || !(pre instanceof Element)) return true;
 
-    // Skip user messages.
+    // Skip ChatGPT user messages.
     if (pre.closest('[data-message-author-role="user"]')) return true;
 
     // Skip editor / input areas.
@@ -302,7 +308,127 @@
     button.classList.add('ai-wrap-floating');
   }
 
+  function isClaudeCodePre(pre) {
+    return pre.matches('pre.code-block__code');
+  }
+
+  function findClaudeCodeRoot(pre) {
+    return (
+      pre.closest('[role="group"][aria-label*="code"]') ||
+      pre.closest('[role="group"]') ||
+      pre.parentElement
+    );
+  }
+
+  function isGeminiCodePre(pre) {
+    return Boolean(
+      pre.closest('code-block, .code-block') &&
+      (
+        pre.closest('response-element') ||
+        pre.closest('message-content') ||
+        pre.closest('.model-response-text') ||
+        pre.closest('structured-content-container')
+      )
+    );
+  }
+
+  function findGeminiCodeRoot(pre) {
+    return (
+      pre.closest('.code-block') ||
+      pre.closest('code-block') ||
+      pre.parentElement
+    );
+  }
+
+  function findGeminiButtonHost(root) {
+    return (
+      root.querySelector('.code-block-decoration .buttons') ||
+      root.querySelector('.buttons')
+    );
+  }
+
+  function getProcessedRoot(pre) {
+    if (isClaudeCodePre(pre)) {
+      return findClaudeCodeRoot(pre) || pre;
+    }
+
+    if (isGeminiCodePre(pre)) {
+      return findGeminiCodeRoot(pre) || pre;
+    }
+
+    return pre;
+  }
+
+  function needsRepair(pre) {
+    const root = getProcessedRoot(pre);
+
+    if (!root) return false;
+
+    const processed = pre.hasAttribute(PROCESSED) || root.hasAttribute(PROCESSED);
+    if (!processed) return false;
+
+    return !root.querySelector('.ai-wrap-toggle');
+  }
+
+  function clearProcessedFlags(pre) {
+    const root = getProcessedRoot(pre);
+
+    pre.removeAttribute(PROCESSED);
+
+    if (root && root !== pre) {
+      root.removeAttribute(PROCESSED);
+    }
+  }
+
+  function processClaudeBlock(pre) {
+    const root = findClaudeCodeRoot(pre);
+
+    if (!root || root.hasAttribute(PROCESSED)) return;
+
+    root.setAttribute(PROCESSED, '1');
+    pre.setAttribute(PROCESSED, '1');
+
+    const button = createBtn(root);
+    button.classList.add('ai-wrap-claude');
+
+    ensureRelativePosition(root);
+    root.insertBefore(button, root.firstChild);
+  }
+
+  function processGeminiBlock(pre) {
+    const root = findGeminiCodeRoot(pre);
+
+    if (!root || root.hasAttribute(PROCESSED)) return;
+
+    root.setAttribute(PROCESSED, '1');
+    pre.setAttribute(PROCESSED, '1');
+
+    const button = createBtn(root);
+    button.classList.add('ai-wrap-gemini');
+
+    const host = findGeminiButtonHost(root);
+
+    if (host) {
+      host.insertBefore(button, host.firstChild);
+      return;
+    }
+
+    ensureRelativePosition(root);
+    button.classList.add('ai-wrap-gemini-floating');
+    root.insertBefore(button, root.firstChild);
+  }
+
   function processBlock(pre) {
+    if (isClaudeCodePre(pre)) {
+      processClaudeBlock(pre);
+      return;
+    }
+
+    if (isGeminiCodePre(pre)) {
+      processGeminiBlock(pre);
+      return;
+    }
+
     if (pre.hasAttribute(PROCESSED)) return;
     if (shouldSkipPre(pre)) return;
 
@@ -311,7 +437,7 @@
     const button = createBtn(pre);
 
     // Main path:
-    // Code blocks with a real ChatGPT header, e.g. language + copy/run buttons.
+    // ChatGPT code blocks with a real header, e.g. language + copy/run buttons.
     const buttonGroup = findHeaderButtonGroup(pre);
 
     if (buttonGroup) {
@@ -330,8 +456,22 @@
 
   function scan() {
     document
-      .querySelectorAll('pre:not(.cm-content):not([' + PROCESSED + '])')
-      .forEach(processBlock);
+      .querySelectorAll('pre:not(.cm-content)')
+      .forEach((pre) => {
+        if (needsRepair(pre)) {
+          clearProcessedFlags(pre);
+          processBlock(pre);
+          return;
+        }
+
+        const root = getProcessedRoot(pre);
+
+        if (pre.hasAttribute(PROCESSED) || (root && root.hasAttribute(PROCESSED))) {
+          return;
+        }
+
+        processBlock(pre);
+      });
   }
 
   let scanTimer = null;

@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Code Wrap",
-  "version": "1.0.1",
-  "description": "Add a per-block word wrap toggle to ChatGPT code blocks. No more horizontal scrolling!",
+  "version": "1.1.0",
+  "description": "Add a per-block word wrap toggle to ChatGPT, Claude, and Gemini code blocks.",
   "content_scripts": [
     {
       "matches": [
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
