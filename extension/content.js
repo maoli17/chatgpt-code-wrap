@@ -1,192 +1,375 @@
 (function () {
   'use strict';
 
+  const STATE_KEY = '__CHATGPT_CODE_WRAP_STATE__';
   const ATTR = 'data-ai-wrap';
   const PROCESSED = 'data-ai-wrap-init';
+  const STYLE_ID = 'ai-code-wrap-style';
 
-  const style = document.createElement('style');
-  style.id = 'ai-code-wrap-style';
-  style.textContent = `
-    /* === CodeMirror code blocks === */
-    pre[${ATTR}="on"] .cm-content,
-    pre[${ATTR}="on"] .cm-line {
-      white-space: pre-wrap !important;
-      overflow-wrap: anywhere !important;
-      min-width: 0 !important;
-    }
+  // Change this to 'on' if you want every code block to wrap by default.
+  const DEFAULT_WRAP = 'off';
 
-    /* === Traditional <pre><code> blocks === */
-    pre[${ATTR}="on"] code {
-      white-space: pre-wrap !important;
-      overflow-wrap: anywhere !important;
-      min-width: 0 !important;
-    }
+  const previousState = window[STATE_KEY];
 
-    /* === Simple code blocks (plain <pre> with <span>) === */
-    pre[${ATTR}="on"],
-    pre[${ATTR}="on"] > span,
-    pre[${ATTR}="on"] > div {
-      white-space: pre-wrap !important;
-      overflow-wrap: anywhere !important;
-      min-width: 0 !important;
-      max-width: 100% !important;
-    }
+  if (previousState && previousState.observer) {
+    previousState.observer.disconnect();
+  }
 
-    /* Only override overflow when wrap is active */
-    pre[${ATTR}="on"] [class*="overflow-x"] {
-      overflow-x: visible !important;
+  if (previousState && Array.isArray(previousState.timers)) {
+    previousState.timers.forEach((timer) => window.clearTimeout(timer));
+  }
+
+  const state = {
+    observer: null,
+    timers: [],
+  };
+
+  window[STATE_KEY] = state;
+
+  function injectStyle() {
+    let style = document.getElementById(STYLE_ID);
+
+    if (!style) {
+      style = document.createElement('style');
+      style.id = STYLE_ID;
+      document.head.appendChild(style);
     }
 
-    /* === Pill toggle button === */
-    .ai-wrap-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 2px 10px 2px 6px;
-      border: none;
-      border-radius: 999px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      line-height: 20px;
-      font-family: inherit;
-      white-space: nowrap;
-    }
-    .ai-pill-dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      transition: background 0.2s ease;
-    }
-    .ai-pill-on {
-      background: rgba(16, 163, 127, 0.15);
-      color: #10a37f;
-    }
-    .ai-pill-on .ai-pill-dot {
-      background: #10a37f;
-    }
-    .ai-pill-off {
-      background: rgba(150, 150, 150, 0.15);
-      color: #999;
-    }
-    .ai-pill-off .ai-pill-dot {
-      background: #999;
-    }
-    .ai-wrap-toggle:hover {
-      filter: brightness(0.9);
-    }
-  `;
-  document.head.appendChild(style);
+    style.textContent = `
+      [${ATTR}="on"] {
+        white-space: pre-wrap !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        overflow-x: visible !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+      }
 
-  function createBtn(pre) {
-    const btn = document.createElement('button');
-    btn.className = 'ai-wrap-toggle';
-    btn.title = 'Toggle word wrap';
+      [${ATTR}="on"] pre,
+      [${ATTR}="on"] code,
+      [${ATTR}="on"] .cm-content,
+      [${ATTR}="on"] .cm-line,
+      [${ATTR}="on"] .cm-scroller,
+      [${ATTR}="on"] [class*="cm-content"],
+      [${ATTR}="on"] [class*="cm-line"],
+      [${ATTR}="on"] [class*="cm-scroller"] {
+        white-space: pre-wrap !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        overflow-x: visible !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+      }
+
+      [${ATTR}="on"] .\\!whitespace-pre,
+      [${ATTR}="on"] [class*="whitespace-pre"] {
+        white-space: pre-wrap !important;
+      }
+
+      [${ATTR}="on"] [class*="overflow-x"],
+      [${ATTR}="on"] [class*="overflow-y-auto"],
+      [${ATTR}="on"] [class*="overflow-auto"],
+      [${ATTR}="on"] [dir="ltr"] {
+        overflow-x: visible !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+      }
+
+      .ai-wrap-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        padding: 2px 10px 2px 6px;
+        border: none;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 20px;
+        font-family: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+        user-select: none;
+        pointer-events: auto !important;
+        transition: filter 0.2s ease, background 0.2s ease, color 0.2s ease;
+      }
+
+      .ai-wrap-toggle:hover {
+        filter: brightness(0.92);
+      }
+
+      .ai-wrap-toggle:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+      }
+
+      .ai-wrap-fallback-root {
+        position: relative !important;
+        padding-top: 26px !important;
+      }
+
+      .ai-wrap-toggle.ai-wrap-floating {
+        position: absolute;
+        top: 5px;
+        right: 43px;
+        z-index: 9999;
+        box-shadow: -6px 0 6px var(--bg-primary, #f7f7f8);
+        opacity: 1;
+        pointer-events: auto !important;
+      }
+
+      .ai-wrap-toggle.ai-wrap-floating.ai-pill-on {
+        background: rgba(16, 163, 127, 0.15);
+        color: #10a37f;
+      }
+
+      .ai-wrap-toggle.ai-wrap-floating.ai-pill-on .ai-pill-dot {
+        background: #10a37f;
+      }
+
+      .ai-wrap-toggle.ai-wrap-floating.ai-pill-off {
+        background: rgba(150, 150, 150, 0.15);
+        color: #888;
+      }
+
+      .ai-wrap-toggle.ai-wrap-floating.ai-pill-off .ai-pill-dot {
+        background: #888;
+      }
+
+      .ai-pill-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        transition: background 0.2s ease;
+      }
+
+      .ai-pill-on {
+        background: rgba(16, 163, 127, 0.15);
+        color: #10a37f;
+      }
+
+      .ai-pill-on .ai-pill-dot {
+        background: #10a37f;
+      }
+
+      .ai-pill-off {
+        background: rgba(150, 150, 150, 0.15);
+        color: #888;
+      }
+
+      .ai-pill-off .ai-pill-dot {
+        background: #888;
+      }
+    `;
+  }
+
+  function resetInjectedDom() {
+    document.querySelectorAll('.ai-wrap-toggle').forEach((button) => {
+      button.remove();
+    });
+
+    document.querySelectorAll('[' + PROCESSED + ']').forEach((element) => {
+      element.removeAttribute(PROCESSED);
+    });
+
+    document.querySelectorAll('.ai-wrap-fallback-root').forEach((element) => {
+      element.classList.remove('ai-wrap-fallback-root');
+    });
+  }
+
+  function updateButtonState(button, root) {
+    const isOn = root.getAttribute(ATTR) === 'on';
+
+    button.classList.toggle('ai-pill-on', isOn);
+    button.classList.toggle('ai-pill-off', !isOn);
+
+    button.setAttribute('title', isOn ? 'Disable code wrap' : 'Enable code wrap');
+    button.setAttribute(
+      'aria-label',
+      isOn ? 'Disable code wrap for this code block' : 'Enable code wrap for this code block'
+    );
+  }
+
+  function toggleWrap(root, button) {
+    const isOn = root.getAttribute(ATTR) === 'on';
+    root.setAttribute(ATTR, isOn ? 'off' : 'on');
+    updateButtonState(button, root);
+  }
+
+  function createBtn(root) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ai-wrap-toggle';
 
     const dot = document.createElement('span');
     dot.className = 'ai-pill-dot';
-    btn.appendChild(dot);
-    btn.appendChild(document.createTextNode(' Wrap'));
 
-    function update() {
-      const isOn = pre.getAttribute(ATTR) === 'on';
-      btn.classList.toggle('ai-pill-on', isOn);
-      btn.classList.toggle('ai-pill-off', !isOn);
+    const label = document.createElement('span');
+    label.textContent = 'Wrap';
+
+    button.appendChild(dot);
+    button.appendChild(label);
+
+    if (!root.hasAttribute(ATTR)) {
+      root.setAttribute(ATTR, DEFAULT_WRAP);
     }
 
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOn = pre.getAttribute(ATTR) === 'on';
-      pre.setAttribute(ATTR, isOn ? 'off' : 'on');
-      update();
+    updateButtonState(button, root);
+
+    button.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
     });
 
-    pre.setAttribute(ATTR, 'off');
-    update();
-    return btn;
+    button.addEventListener('mousedown', (event) => {
+      event.stopPropagation();
+    });
+
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleWrap(root, button);
+    });
+
+    return button;
+  }
+
+  function shouldSkipPre(pre) {
+    if (!pre || !(pre instanceof Element)) return true;
+
+    // Skip user messages.
+    if (pre.closest('[data-message-author-role="user"]')) return true;
+
+    // Skip editor / input areas.
+    if (pre.closest('[contenteditable], textarea, [role="textbox"]')) return true;
+
+    // New ChatGPT structure:
+    // outer <pre> contains inner <pre class="cm-content">.
+    // The inner one is CodeMirror content, not a code-block container.
+    if (pre.classList.contains('cm-content')) return true;
+
+    // General nested-pre guard.
+    // If this <pre> is inside another <pre>, process only the outer block.
+    if (pre.parentElement && pre.parentElement.closest('pre')) return true;
+
+    return false;
+  }
+
+  function isCopyButton(button) {
+    const text = (button.innerText || button.textContent || '').trim().toLowerCase();
+    const aria = (button.getAttribute('aria-label') || '').toLowerCase();
+    const title = (button.getAttribute('title') || '').toLowerCase();
+
+    return (
+      text.includes('copy') ||
+      aria.includes('copy') ||
+      title.includes('copy') ||
+      text.includes('复制') ||
+      aria.includes('复制') ||
+      title.includes('复制')
+    );
+  }
+
+  function groupLooksLikeRealHeader(group) {
+    const stickyAncestor = group.closest('[class*="sticky"]');
+    const justifyBetweenAncestor = group.closest('[class*="justify-between"]');
+
+    return Boolean(stickyAncestor || justifyBetweenAncestor);
+  }
+
+  function findHeaderButtonGroup(pre) {
+    const groups = Array.from(
+      pre.querySelectorAll('[class*="flex-row"][class*="items-center"][class*="gap"]')
+    );
+
+    return groups.find((group) => {
+      if (!groupLooksLikeRealHeader(group)) return false;
+
+      const buttons = Array.from(group.querySelectorAll('button, [role="button"]'));
+      return buttons.some(isCopyButton);
+    }) || null;
+  }
+
+  function ensureRelativePosition(element) {
+    const position = window.getComputedStyle(element).position;
+
+    if (position === 'static') {
+      element.style.position = 'relative';
+    }
+  }
+
+  function makeFloatingButton(button) {
+    button.classList.add('ai-wrap-floating');
   }
 
   function processBlock(pre) {
     if (pre.hasAttribute(PROCESSED)) return;
+    if (shouldSkipPre(pre)) return;
+
     pre.setAttribute(PROCESSED, '1');
 
-    // Strategy 1: Header button bar (code blocks with language label)
-    // NOTE: These selectors match Tailwind CSS class fragments used by ChatGPT.
-    // ChatGPT frequently updates its DOM/class names — if buttons stop appearing
-    // in the header bar, these selectors likely need updating. Check the <pre>
-    // element's inner structure with DevTools to find the new class names.
-    const btnGroup = pre.querySelector(
-      '[class*="flex-row"][class*="items-center"][class*="gap"]'
-    );
-    if (btnGroup) {
-      btnGroup.insertBefore(createBtn(pre), btnGroup.firstChild);
+    const button = createBtn(pre);
+
+    // Main path:
+    // Code blocks with a real ChatGPT header, e.g. language + copy/run buttons.
+    const buttonGroup = findHeaderButtonGroup(pre);
+
+    if (buttonGroup) {
+      buttonGroup.insertBefore(button, buttonGroup.firstChild);
       return;
     }
 
-    // Strategy 2: Scroll container (simple code blocks without header)
-    const scrollParent = pre.querySelector('[class*="overflow-x-hidden"]')
-      || pre.querySelector('[class*="overflow-y-auto"]');
-    if (scrollParent) {
-      scrollParent.style.position = 'relative';
-      const btn = createBtn(pre);
-      Object.assign(btn.style, {
-        position: 'absolute',
-        top: '8px',
-        right: '43px',
-        zIndex: '20',
-        background: 'var(--bg-primary, #f7f7f8)',
-        boxShadow: '-6px 0 6px var(--bg-primary, #f7f7f8)',
-        opacity: '0.7',
-      });
-      scrollParent.insertBefore(btn, scrollParent.firstChild);
-      return;
-    }
-
-    // Strategy 3: Fallback — position button inside pre
-    // NOTE: We no longer set pre.style.overflow = 'visible' here to avoid
-    // breaking parent container layout. The button may be clipped in rare
-    // cases, but layout integrity is more important.
-    pre.style.position = 'relative';
-    const btn = createBtn(pre);
-    Object.assign(btn.style, {
-      position: 'absolute',
-      top: '8px',
-      right: '43px',
-      zIndex: '20',
-      background: 'var(--bg-primary, #f7f7f8)',
-      boxShadow: '-6px 0 6px var(--bg-primary, #f7f7f8)',
-      opacity: '0.7',
-    });
-    pre.insertBefore(btn, pre.firstChild);
+    // Fallback:
+    // Plain text code blocks without a real header.
+    // Add modest top padding so the floating Wrap button does not cover the first line.
+    ensureRelativePosition(pre);
+    pre.classList.add('ai-wrap-fallback-root');
+    makeFloatingButton(button);
+    pre.insertBefore(button, pre.firstChild);
   }
 
   function scan() {
-    document.querySelectorAll('pre:not([' + PROCESSED + '])').forEach((pre) => {
-      // Skip code blocks in user messages
-      if (pre.closest('[data-message-author-role="user"]')) return;
-      // Skip code blocks in input / editable areas
-      if (pre.closest('[contenteditable]')) return;
-      processBlock(pre);
-    });
+    document
+      .querySelectorAll('pre:not(.cm-content):not([' + PROCESSED + '])')
+      .forEach(processBlock);
   }
 
-  // Throttle scan to avoid performance issues — ChatGPT's SPA triggers
-  // hundreds of DOM mutations per message render
   let scanTimer = null;
+
   function throttledScan() {
     if (scanTimer) return;
-    scanTimer = setTimeout(() => {
+
+    scanTimer = window.setTimeout(() => {
       scan();
       scanTimer = null;
     }, 300);
   }
 
-  new MutationObserver(throttledScan).observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
-  scan();
-  setTimeout(scan, 1000);
-  setTimeout(scan, 3000);
+  function setManagedTimeout(callback, delay) {
+    const timer = window.setTimeout(callback, delay);
+    state.timers.push(timer);
+    return timer;
+  }
+
+  function start() {
+    injectStyle();
+    resetInjectedDom();
+    scan();
+
+    state.observer = new MutationObserver(throttledScan);
+
+    state.observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    setManagedTimeout(scan, 1000);
+    setManagedTimeout(scan, 3000);
+  }
+
+  if (document.body) {
+    start();
+  } else {
+    window.addEventListener('DOMContentLoaded', start, { once: true });
+  }
 })();
