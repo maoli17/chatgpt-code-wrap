@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Code Wrap",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Add a per-block word wrap toggle to ChatGPT code blocks. No more horizontal scrolling!",
   "content_scripts": [
     {
