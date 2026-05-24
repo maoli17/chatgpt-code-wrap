@@ -22,8 +22,8 @@ No more horizontal scrolling when reading long code lines.
 Install from your browser's extension store:
 
 - [Chrome Web Store](https://chromewebstore.google.com/detail/chatgpt-code-wrap/plhjikjpniajpkfigoidcoghndkfmnkf)
+- [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/chatgpt-code-wrap/jamhcgajmjaablfnbmgceehoolpdiajp)
 - [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/chatgpt-code-wrap/)
-- Edge users can install from the Chrome Web Store.
 
 Manual install:
 
