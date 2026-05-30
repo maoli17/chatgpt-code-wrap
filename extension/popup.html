@@ -59,6 +59,72 @@
   .pill-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
   .pill-on .pill-dot { background: #10a37f; }
   .pill-off .pill-dot { background: #999; }
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 14px 0 4px;
+  }
+  .setting-copy {
+    min-width: 0;
+  }
+  .setting-title {
+    display: block;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .setting-detail {
+    display: block;
+    color: #888;
+    font-size: 11px;
+    line-height: 1.4;
+    margin-top: 2px;
+  }
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 42px;
+    height: 24px;
+    flex: 0 0 auto;
+  }
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: #333;
+    border-radius: 999px;
+    transition: background 0.2s ease;
+  }
+  .slider::before {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    top: 3px;
+    background: #aaa;
+    border-radius: 50%;
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+  .switch input:checked + .slider {
+    background: rgba(16, 163, 127, 0.35);
+  }
+  .switch input:checked + .slider::before {
+    transform: translateX(18px);
+    background: #10a37f;
+  }
+  .switch input:focus-visible + .slider {
+    outline: 2px solid #10a37f;
+    outline-offset: 2px;
+  }
   .footer { margin-top: 12px; font-size: 11px; color: #555; text-align: center; }
   .footer a { color: #10a37f; text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
@@ -86,6 +152,17 @@
     <span class="pill-demo pill-off"><span class="pill-dot"></span> Wrap</span>
     = original horizontal scroll
   </div>
+  <div class="divider"></div>
+  <label class="setting-row">
+    <span class="setting-copy">
+      <span class="setting-title">Auto-wrap code blocks</span>
+      <span class="setting-detail">Use wrap as the default on supported sites.</span>
+    </span>
+    <span class="switch">
+      <input type="checkbox" id="auto-wrap-toggle">
+      <span class="slider"></span>
+    </span>
+  </label>
   <div class="divider"></div>
   <div class="footer">
     <a href="https://github.com/maoli17/chatgpt-code-wrap" target="_blank">GitHub</a>

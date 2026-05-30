@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Code Wrap",
-  "version": "1.1.1",
-  "description": "Add a per-block word wrap toggle to ChatGPT, Claude, and Gemini code blocks.",
+  "version": "1.2.0",
+  "description": "Add per-block and automatic word wrap controls to ChatGPT, Claude, and Gemini code blocks.",
+  "permissions": ["storage"],
   "content_scripts": [
     {
       "matches": [

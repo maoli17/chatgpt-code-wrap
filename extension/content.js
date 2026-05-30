@@ -5,9 +5,9 @@
   const ATTR = 'data-ai-wrap';
   const PROCESSED = 'data-ai-wrap-init';
   const STYLE_ID = 'ai-code-wrap-style';
+  const DEFAULT_WRAP_KEY = 'defaultWrap';
 
-  // Change this to 'on' if you want every code block to wrap by default.
-  const DEFAULT_WRAP = 'off';
+  let defaultWrap = 'off';
 
   const previousState = window[STATE_KEY];
 
@@ -19,9 +19,31 @@
     previousState.timers.forEach((timer) => window.clearTimeout(timer));
   }
 
+  if (
+    previousState &&
+    previousState.storageListener &&
+    typeof chrome !== 'undefined' &&
+    chrome.storage &&
+    chrome.storage.onChanged
+  ) {
+    chrome.storage.onChanged.removeListener(previousState.storageListener);
+  }
+
+  if (previousState && previousState.scanFrame) {
+    window.cancelAnimationFrame(previousState.scanFrame);
+  }
+
+  const manualWrapOverrides =
+    previousState && previousState.manualWrapOverrides instanceof Map
+      ? previousState.manualWrapOverrides
+      : new Map();
+
   const state = {
     observer: null,
     timers: [],
+    storageListener: null,
+    scanFrame: null,
+    manualWrapOverrides,
   };
 
   window[STATE_KEY] = state;
@@ -64,6 +86,24 @@
       [${ATTR}="on"] .\\!whitespace-pre,
       [${ATTR}="on"] [class*="whitespace-pre"] {
         white-space: pre-wrap !important;
+      }
+
+      html[data-ai-wrap-default="on"] [role="group"]:not([${ATTR}="off"]) pre.code-block__code {
+        white-space: pre-wrap !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        overflow-x: visible !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+      }
+
+      html[data-ai-wrap-default="on"] pre.code-block__code:not([${PROCESSED}]) {
+        white-space: pre-wrap !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+        overflow-x: visible !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
       }
 
       [${ATTR}="on"] [class*="overflow-x"],
@@ -132,7 +172,7 @@
         opacity: 1;
         pointer-events: auto !important;
         position: relative;
-        top: -2px;
+        top: -5px;
       }
 
       .ai-wrap-toggle.ai-wrap-gemini-floating {
@@ -183,8 +223,53 @@
       element.classList.remove('ai-wrap-fallback-root');
     });
 
-    // Intentionally keep data-ai-wrap="on/off" so the current wrap state
-    // survives script reloads while testing or hot-reloading the extension.
+    // Keep data-ai-wrap="on/off" on roots; startup reconciles those roots
+    // with the stored default after buttons are repaired.
+  }
+
+  function canUseSyncStorage() {
+    return (
+      typeof chrome !== 'undefined' &&
+      chrome.storage &&
+      chrome.storage.sync
+    );
+  }
+
+  function canListenToStorageChanges() {
+    return (
+      typeof chrome !== 'undefined' &&
+      chrome.storage &&
+      chrome.storage.onChanged
+    );
+  }
+
+  function toWrapState(isEnabled) {
+    return isEnabled ? 'on' : 'off';
+  }
+
+  function syncDefaultWrapAttribute() {
+    if (defaultWrap === 'on') {
+      document.documentElement.setAttribute('data-ai-wrap-default', 'on');
+      return;
+    }
+
+    document.documentElement.removeAttribute('data-ai-wrap-default');
+  }
+
+  function loadDefaultWrap(callback) {
+    if (!canUseSyncStorage()) {
+      callback(false);
+      return;
+    }
+
+    chrome.storage.sync.get({ [DEFAULT_WRAP_KEY]: false }, (settings) => {
+      if (chrome.runtime.lastError) {
+        callback(false);
+        return;
+      }
+
+      callback(Boolean(settings[DEFAULT_WRAP_KEY]));
+    });
   }
 
   function updateButtonState(button, root) {
@@ -200,13 +285,71 @@
     );
   }
 
-  function toggleWrap(root, button) {
-    const isOn = root.getAttribute(ATTR) === 'on';
-    root.setAttribute(ATTR, isOn ? 'off' : 'on');
-    updateButtonState(button, root);
+  function updateButtonsForRoot(root) {
+    root.querySelectorAll('.ai-wrap-toggle').forEach((button) => {
+      updateButtonState(button, root);
+    });
   }
 
-  function createBtn(root) {
+  function setWrapState(root, wrapState) {
+    root.setAttribute(ATTR, wrapState);
+    updateButtonsForRoot(root);
+  }
+
+  function applyDefaultWrapToExistingBlocks() {
+    document.querySelectorAll('[' + ATTR + ']').forEach((root) => {
+      setWrapState(root, defaultWrap);
+    });
+  }
+
+  function getCodeText(element) {
+    const codeElement =
+      element.matches && element.matches('pre:not(.cm-content)')
+        ? element
+        : element.querySelector('pre:not(.cm-content)');
+
+    return ((codeElement && (codeElement.innerText || codeElement.textContent)) || '')
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
+
+  function getBlockSignature(element) {
+    const text = getCodeText(element);
+
+    if (!text) return '';
+
+    return text.slice(0, 4000);
+  }
+
+  function rememberManualOverride(element, wrapState) {
+    const signature = getBlockSignature(element);
+
+    if (!signature) return;
+
+    manualWrapOverrides.set(signature, wrapState);
+
+    if (manualWrapOverrides.size > 200) {
+      manualWrapOverrides.delete(manualWrapOverrides.keys().next().value);
+    }
+  }
+
+  function getManualOverride(element) {
+    const signature = getBlockSignature(element);
+
+    if (!signature) return null;
+
+    return manualWrapOverrides.get(signature) || null;
+  }
+
+  function toggleWrap(root, sourceElement) {
+    const isOn = root.getAttribute(ATTR) === 'on';
+    const nextState = isOn ? 'off' : 'on';
+
+    setWrapState(root, nextState);
+    rememberManualOverride(sourceElement || root, nextState);
+  }
+
+  function createBtn(root, sourceElement) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'ai-wrap-toggle';
@@ -221,7 +364,7 @@
     button.appendChild(label);
 
     if (!root.hasAttribute(ATTR)) {
-      root.setAttribute(ATTR, DEFAULT_WRAP);
+      root.setAttribute(ATTR, getManualOverride(sourceElement || root) || defaultWrap);
     }
 
     updateButtonState(button, root);
@@ -237,7 +380,7 @@
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      toggleWrap(root, button);
+      toggleWrap(root, sourceElement || root);
     });
 
     return button;
@@ -312,6 +455,10 @@
     }) || null;
   }
 
+  function hasCodeText(pre) {
+    return Boolean((pre.innerText || pre.textContent || '').trim());
+  }
+
   function ensureRelativePosition(element) {
     const position = window.getComputedStyle(element).position;
 
@@ -349,11 +496,16 @@
   }
 
   function findGeminiCodeRoot(pre) {
-    return (
-      pre.closest('.code-block') ||
-      pre.closest('code-block') ||
-      pre.parentElement
-    );
+    const codeBlockElement = pre.closest('code-block');
+    if (codeBlockElement) return codeBlockElement;
+
+    const classRoot = pre.closest('.code-block');
+
+    if (classRoot && classRoot.querySelectorAll('pre:not(.cm-content)').length === 1) {
+      return classRoot;
+    }
+
+    return pre.parentElement;
   }
 
   function findGeminiButtonHost(root) {
@@ -386,6 +538,33 @@
     return !root.querySelector('.ai-wrap-toggle');
   }
 
+  function findDirectFloatingButton(pre) {
+    return Array.from(pre.children).find((child) => (
+      child.classList &&
+      child.classList.contains('ai-wrap-toggle') &&
+      child.classList.contains('ai-wrap-floating')
+    )) || null;
+  }
+
+  function repairChatGPTHeaderPlacement(pre) {
+    if (!pre.hasAttribute(PROCESSED)) return false;
+    if (isClaudeCodePre(pre) || isGeminiCodePre(pre)) return false;
+    if (shouldSkipEverywhere(pre) || shouldSkipChatGPTPre(pre)) return false;
+
+    const button = findDirectFloatingButton(pre);
+    if (!button) return false;
+
+    const buttonGroup = findHeaderButtonGroup(pre);
+    if (!buttonGroup) return false;
+
+    button.classList.remove('ai-wrap-floating');
+    pre.classList.remove('ai-wrap-fallback-root');
+    buttonGroup.insertBefore(button, buttonGroup.firstChild);
+    updateButtonState(button, pre);
+
+    return true;
+  }
+
   function clearProcessedFlags(pre) {
     const root = getProcessedRoot(pre);
 
@@ -404,7 +583,7 @@
     root.setAttribute(PROCESSED, '1');
     pre.setAttribute(PROCESSED, '1');
 
-    const button = createBtn(root);
+    const button = createBtn(root, pre);
     button.classList.add('ai-wrap-claude');
 
     ensureRelativePosition(root);
@@ -419,7 +598,7 @@
     root.setAttribute(PROCESSED, '1');
     pre.setAttribute(PROCESSED, '1');
 
-    const button = createBtn(root);
+    const button = createBtn(root, pre);
     button.classList.add('ai-wrap-gemini');
 
     const host = findGeminiButtonHost(root);
@@ -454,13 +633,17 @@
 
     if (pre.hasAttribute(PROCESSED)) return;
 
-    pre.setAttribute(PROCESSED, '1');
-
-    const button = createBtn(pre);
-
     // Main path:
     // ChatGPT code blocks with a real header, e.g. language + copy/run buttons.
     const buttonGroup = findHeaderButtonGroup(pre);
+
+    // ChatGPT can create an empty placeholder <pre> while a response starts.
+    // Wait until either the header or real code text exists before adding UI.
+    if (!buttonGroup && !hasCodeText(pre)) return;
+
+    pre.setAttribute(PROCESSED, '1');
+
+    const button = createBtn(pre, pre);
 
     if (buttonGroup) {
       buttonGroup.insertBefore(button, buttonGroup.firstChild);
@@ -486,6 +669,10 @@
           return;
         }
 
+        if (repairChatGPTHeaderPlacement(pre)) {
+          return;
+        }
+
         const root = getProcessedRoot(pre);
 
         if (pre.hasAttribute(PROCESSED) || (root && root.hasAttribute(PROCESSED))) {
@@ -496,15 +683,13 @@
       });
   }
 
-  let scanTimer = null;
-
   function throttledScan() {
-    if (scanTimer) return;
+    if (state.scanFrame) return;
 
-    scanTimer = window.setTimeout(() => {
+    state.scanFrame = window.requestAnimationFrame(() => {
+      state.scanFrame = null;
       scan();
-      scanTimer = null;
-    }, 300);
+    });
   }
 
   function setManagedTimeout(callback, delay) {
@@ -513,20 +698,46 @@
     return timer;
   }
 
+  function listenForDefaultWrapChanges() {
+    if (!canListenToStorageChanges()) return;
+
+    const listener = (changes, areaName) => {
+      if (areaName !== 'sync' || !changes[DEFAULT_WRAP_KEY]) return;
+
+      defaultWrap = toWrapState(Boolean(changes[DEFAULT_WRAP_KEY].newValue));
+      syncDefaultWrapAttribute();
+      applyDefaultWrapToExistingBlocks();
+      scan();
+    };
+
+    chrome.storage.onChanged.addListener(listener);
+    state.storageListener = listener;
+  }
+
   function start() {
-    injectStyle();
-    resetInjectedDom();
-    scan();
+    loadDefaultWrap((isEnabled) => {
+      defaultWrap = toWrapState(isEnabled);
+      syncDefaultWrapAttribute();
 
-    state.observer = new MutationObserver(throttledScan);
+      injectStyle();
+      resetInjectedDom();
+      scan();
+      applyDefaultWrapToExistingBlocks();
 
-    state.observer.observe(document.body, {
-      childList: true,
-      subtree: true,
+      state.observer = new MutationObserver(throttledScan);
+
+      state.observer.observe(document.body, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'title', 'aria-label'],
+      });
+
+      listenForDefaultWrapChanges();
+      setManagedTimeout(scan, 1000);
+      setManagedTimeout(scan, 3000);
     });
-
-    setManagedTimeout(scan, 1000);
-    setManagedTimeout(scan, 3000);
   }
 
   if (document.body) {

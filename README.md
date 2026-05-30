@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/github/v/release/maoli17/chatgpt-code-wrap)
 ![License](https://img.shields.io/github/license/maoli17/chatgpt-code-wrap)
 
-A lightweight browser extension for Chrome, Edge, and Firefox that adds a **Wrap** button to code blocks.
+A lightweight browser extension for Chrome, Edge, and Firefox that adds word wrap controls to code blocks.
 
 **Now supports ChatGPT, Claude, and Gemini.**
 
@@ -44,6 +44,10 @@ Click **Wrap** to toggle word wrap for that code block.
 
 The setting is applied per code block.
 
+Open the extension popup to enable **Auto-wrap code blocks**. When enabled, supported code blocks wrap by default on ChatGPT, Claude, and Gemini, including newly generated code blocks.
+
+The Auto-wrap setting is saved by your browser. You can still use the per-block **Wrap** button to temporarily override an individual code block on the current page.
+
 ## How It Works
 
 Different AI chat platforms render code blocks with different DOM structures.
@@ -59,9 +63,19 @@ When wrap is enabled, the extension applies CSS rules such as:
 
 The extension avoids inserting the button directly into the actual `<pre>` content for Claude and Gemini, so copied code is not polluted by the `Wrap` label.
 
+The Auto-wrap preference is stored with the browser extension storage API.
+
 It also includes a lightweight repair mechanism for streamed React / Angular updates. If the page re-renders a code block and removes the injected button, the extension can detect the missing button and add it back.
 
 ## Recent Updates
+
+### v1.2.0
+
+- Added a popup setting to auto-wrap supported code blocks by default
+- Saved the Auto-wrap preference with browser extension storage
+- Applied Auto-wrap changes immediately to existing code blocks on the current page
+- Preserved per-block manual wrap and unwrap controls
+- Improved handling for streamed and re-rendered code blocks on ChatGPT, Claude, and Gemini
 
 ### v1.1.1
 
@@ -99,7 +113,7 @@ It also includes a lightweight repair mechanism for streamed React / Angular upd
 - [x] Improve header bar detection for edge cases
 - [x] Improve fallback placement for plain-text code blocks
 - [x] Add repair logic for streamed updates
-- [ ] Optional global default wrap setting
+- [x] Optional global default wrap setting
 - [ ] Optional button position setting
 - [ ] Additional AI chat platforms
 
