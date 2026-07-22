@@ -69,6 +69,13 @@ It also includes a lightweight repair mechanism for streamed React / Angular upd
 
 ## Recent Updates
 
+### v1.2.1
+
+- Added support for ChatGPT's editable writing/code block container
+- Added Wrap beside the native Copy action in both inline and full-screen editable code-like blocks
+- Limited the new detection path to writing blocks containing `pre > code`, avoiding ordinary editable documents
+- Added repair handling for ChatGPT header re-renders and editor mode changes
+
 ### v1.2.0
 
 - Added a popup setting to auto-wrap supported code blocks by default

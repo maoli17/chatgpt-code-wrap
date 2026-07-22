@@ -6,6 +6,15 @@
   const PROCESSED = 'data-ai-wrap-init';
   const STYLE_ID = 'ai-code-wrap-style';
   const DEFAULT_WRAP_KEY = 'defaultWrap';
+  const WRITING_BLOCK_SELECTOR =
+    '[data-testid="writing-block-container"], [data-writing-block="true"]';
+  const WRITING_BLOCK_EDITOR_SELECTOR =
+    '[data-writing-block-fullscreen-editor-region="true"]';
+  const WRITING_BLOCK_HEADER_SELECTOR =
+    '[data-writing-block-fullscreen-header-chrome="true"]';
+  const FULLSCREEN_WRITING_BLOCK_EDITOR_SELECTOR =
+    '[data-writing-block-fullscreen-editor-region="true"]' +
+    '[data-writing-block-fullscreen-editor-layout="fullscreen"]';
 
   let defaultWrap = 'off';
 
@@ -58,7 +67,7 @@
     }
 
     style.textContent = `
-      [${ATTR}="on"] {
+      [${ATTR}="on"]:not([data-writing-block="true"]):not([data-testid="writing-block-container"]):not(.ai-wrap-fullscreen-root) {
         white-space: pre-wrap !important;
         overflow-wrap: anywhere !important;
         word-break: break-word !important;
@@ -167,6 +176,10 @@
         pointer-events: auto !important;
       }
 
+      .ai-wrap-toggle.ai-wrap-writing-block {
+        flex: 0 0 auto;
+      }
+
       .ai-wrap-toggle.ai-wrap-gemini {
         margin-right: 8px;
         opacity: 1;
@@ -223,6 +236,10 @@
       element.classList.remove('ai-wrap-fallback-root');
     });
 
+    document.querySelectorAll('.ai-wrap-fullscreen-root').forEach((element) => {
+      element.classList.remove('ai-wrap-fullscreen-root');
+    });
+
     // Keep data-ai-wrap="on/off" on roots; startup reconciles those roots
     // with the stored default after buttons are repaired.
   }
@@ -274,15 +291,24 @@
 
   function updateButtonState(button, root) {
     const isOn = root.getAttribute(ATTR) === 'on';
+    const title = isOn ? 'Disable code wrap' : 'Enable code wrap';
+    const ariaLabel = isOn
+      ? 'Disable code wrap for this code block'
+      : 'Enable code wrap for this code block';
 
     button.classList.toggle('ai-pill-on', isOn);
     button.classList.toggle('ai-pill-off', !isOn);
 
-    button.setAttribute('title', isOn ? 'Disable code wrap' : 'Enable code wrap');
-    button.setAttribute(
-      'aria-label',
-      isOn ? 'Disable code wrap for this code block' : 'Enable code wrap for this code block'
-    );
+    // Write title/aria-label only when they actually change. The MutationObserver
+    // watches these attributes, so unconditional setAttribute calls in the repair
+    // path would retrigger scans every frame (a self-sustaining rAF loop).
+    if (button.getAttribute('title') !== title) {
+      button.setAttribute('title', title);
+    }
+
+    if (button.getAttribute('aria-label') !== ariaLabel) {
+      button.setAttribute('aria-label', ariaLabel);
+    }
   }
 
   function updateButtonsForRoot(root) {
@@ -298,7 +324,10 @@
 
   function applyDefaultWrapToExistingBlocks() {
     document.querySelectorAll('[' + ATTR + ']').forEach((root) => {
-      setWrapState(root, defaultWrap);
+      // Keep an explicit per-block choice the user made on this page instead of
+      // clobbering it with the default (matches the documented "temporary
+      // override" behavior).
+      setWrapState(root, getManualOverride(root) || defaultWrap);
     });
   }
 
@@ -344,9 +373,11 @@
   function toggleWrap(root, sourceElement) {
     const isOn = root.getAttribute(ATTR) === 'on';
     const nextState = isOn ? 'off' : 'on';
+    const source = sourceElement || root;
 
     setWrapState(root, nextState);
-    rememberManualOverride(sourceElement || root, nextState);
+    rememberManualOverride(source, nextState);
+    syncMatchingWritingBlockStates(root, source, nextState);
   }
 
   function createBtn(root, sourceElement) {
@@ -363,8 +394,18 @@
     button.appendChild(dot);
     button.appendChild(label);
 
+    // sourceElement may be an element or a resolver function. Writing blocks pass
+    // a resolver so the click handler reads the current <pre> (ProseMirror can
+    // swap the body node while keeping the header and this button).
+    const resolveSource = () => {
+      const source =
+        typeof sourceElement === 'function' ? sourceElement() : sourceElement;
+
+      return source || root;
+    };
+
     if (!root.hasAttribute(ATTR)) {
-      root.setAttribute(ATTR, getManualOverride(sourceElement || root) || defaultWrap);
+      root.setAttribute(ATTR, getManualOverride(resolveSource()) || defaultWrap);
     }
 
     updateButtonState(button, root);
@@ -380,7 +421,7 @@
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      toggleWrap(root, sourceElement || root);
+      toggleWrap(root, resolveSource());
     });
 
     return button;
@@ -433,6 +474,190 @@
       aria.includes('复制') ||
       title.includes('复制')
     );
+  }
+
+  function getWritingBlockCodePre(root) {
+    const editor = root.querySelector(WRITING_BLOCK_EDITOR_SELECTOR);
+
+    if (!editor) return null;
+
+    const pre = editor.querySelector('pre:not(.cm-content)');
+
+    if (!pre || !pre.querySelector('code')) return null;
+
+    return pre;
+  }
+
+  function shouldSkipWritingBlock(root) {
+    return Boolean(root.closest('[data-message-author-role="user"]'));
+  }
+
+  function isFullscreenWritingBlock(root) {
+    return Boolean(root.querySelector(FULLSCREEN_WRITING_BLOCK_EDITOR_SELECTOR));
+  }
+
+  function getFullscreenWritingBlockRoot(editor) {
+    return (
+      editor.closest('[role="dialog"]') ||
+      editor.closest('[data-testid="fullscreen-shell-body"]')
+    );
+  }
+
+  function getWritingBlockRoots() {
+    const roots = new Set(document.querySelectorAll(WRITING_BLOCK_SELECTOR));
+
+    document
+      .querySelectorAll(FULLSCREEN_WRITING_BLOCK_EDITOR_SELECTOR)
+      .forEach((editor) => {
+        const root = getFullscreenWritingBlockRoot(editor);
+
+        if (root) roots.add(root);
+      });
+
+    return roots;
+  }
+
+  function syncMatchingWritingBlockStates(sourceRoot, sourceElement, wrapState) {
+    const signature = getBlockSignature(sourceElement);
+
+    if (!signature) return;
+
+    const roots = getWritingBlockRoots();
+
+    // Only mirror between a writing block's inline and full-screen views. A
+    // toggle on any other kind of block must not reach writing blocks.
+    if (!roots.has(sourceRoot)) return;
+
+    const matches = [];
+
+    roots.forEach((root) => {
+      if (root === sourceRoot || !root.hasAttribute(ATTR)) return;
+
+      const pre = getWritingBlockCodePre(root);
+
+      if (pre && getBlockSignature(pre) === signature) {
+        matches.push(root);
+      }
+    });
+
+    // Propagate only to a single, unambiguous counterpart. If several writing
+    // blocks share the same content, leave them independent so each keeps its
+    // own per-block state.
+    if (matches.length !== 1) return;
+
+    setWrapState(matches[0], wrapState);
+  }
+
+  function findWritingBlockButtonPlacement(root) {
+    const header = root.querySelector(WRITING_BLOCK_HEADER_SELECTOR);
+
+    if (!header) return null;
+
+    const copyButton = Array.from(
+      header.querySelectorAll('button, [role="button"]')
+    ).find(isCopyButton);
+
+    if (copyButton && copyButton.parentElement) {
+      return {
+        host: copyButton.parentElement,
+        before: copyButton,
+      };
+    }
+
+    const trailingContent = header.querySelector(
+      '[data-testid="writing-block-header-magic-edit-trailing-content"]'
+    );
+
+    if (!trailingContent) return null;
+
+    return {
+      host: trailingContent,
+      before: null,
+    };
+  }
+
+  function placeWritingBlockButton(root, button) {
+    const placement = findWritingBlockButtonPlacement(root);
+
+    if (!placement) return false;
+
+    const isAlreadyPlaced =
+      button.parentElement === placement.host &&
+      (placement.before ? button.nextSibling === placement.before : true);
+
+    if (isAlreadyPlaced) return true;
+
+    placement.host.insertBefore(button, placement.before);
+    return true;
+  }
+
+  function removeWritingBlockUi(root) {
+    root.querySelectorAll('.ai-wrap-toggle.ai-wrap-writing-block').forEach((button) => {
+      button.remove();
+    });
+
+    root.classList.remove('ai-wrap-fullscreen-root');
+    root.removeAttribute(PROCESSED);
+    root.removeAttribute(ATTR);
+  }
+
+  function processWritingBlock(root) {
+    if (root.hasAttribute(PROCESSED) || shouldSkipWritingBlock(root)) return;
+
+    const pre = getWritingBlockCodePre(root);
+
+    if (!pre || !hasCodeText(pre)) return;
+
+    if (!findWritingBlockButtonPlacement(root)) return;
+
+    if (isFullscreenWritingBlock(root)) {
+      root.classList.add('ai-wrap-fullscreen-root');
+    }
+
+    const button = createBtn(root, () => getWritingBlockCodePre(root));
+    button.classList.add('ai-wrap-writing-block');
+
+    if (!placeWritingBlockButton(root, button)) return;
+
+    root.setAttribute(PROCESSED, '1');
+  }
+
+  function repairWritingBlock(root) {
+    const pre = getWritingBlockCodePre(root);
+
+    if (!pre) {
+      removeWritingBlockUi(root);
+      return;
+    }
+
+    const button = root.querySelector('.ai-wrap-toggle.ai-wrap-writing-block');
+
+    if (!button) {
+      root.removeAttribute(PROCESSED);
+      processWritingBlock(root);
+      return;
+    }
+
+    root.classList.toggle('ai-wrap-fullscreen-root', isFullscreenWritingBlock(root));
+    placeWritingBlockButton(root, button);
+    updateButtonState(button, root);
+  }
+
+  function scanWritingBlockRoot(root) {
+    if (shouldSkipWritingBlock(root)) return;
+
+    if (root.hasAttribute(PROCESSED)) {
+      repairWritingBlock(root);
+      return;
+    }
+
+    processWritingBlock(root);
+  }
+
+  function scanWritingBlocks() {
+    getWritingBlockRoots().forEach((root) => {
+      scanWritingBlockRoot(root);
+    });
   }
 
   function groupLooksLikeRealHeader(group) {
@@ -660,6 +885,8 @@
   }
 
   function scan() {
+    scanWritingBlocks();
+
     document
       .querySelectorAll('pre:not(.cm-content)')
       .forEach((pre) => {
